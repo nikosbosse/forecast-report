@@ -1,14 +1,13 @@
 ---
 title: "Forecast Evaluation for the German Forecast Hub"
 output: 
-  github_document: default
-  html_document: default
+  github_document
 ---
 
   
 ```{r setup, include=FALSE}
 # knitr options
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.show = "hold", 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
                       out.width = "100%")
 
 # packages
@@ -75,7 +74,7 @@ death_data <- dplyr::inner_join(pred %>%
 
 Visualisation of one week ahead forecasts
 
-``` {r fig.show = "hold", out.width = "100%"}
+``` {r showdata}
 scoringutils::plot_predictions(case_data %>%
                                  dplyr::filter(horizon == 1, 
                                                location_name == "Germany"),
@@ -119,7 +118,7 @@ scoringutils::plot_predictions(death_data %>%
 
 Overview of all the models and metrics
 
-``` {r fig.show = "hold", out.width = "100%"}
+``` {r scoretable}
 scores_cases <- scoringutils::eval_forecasts(case_data,
                                              summarise_by = "model")
 
