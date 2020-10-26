@@ -1,0 +1,221 @@
+---
+title: "Forecast Evaluation for the German Forecast Hub"
+output: 
+  html_document: default
+  github_document: default
+---
+
+  
+```{r setup, include=FALSE}
+# knitr options
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.show = "hold", 
+                      out.width = "100%")
+
+# packages
+library(scoringutils)
+library(magrittr)
+
+# source other functions
+source("load-data.R")
+
+# evaluation options
+models <- "all" # models to evaluate
+root_dir <- "../data-processed" # root directory for the submission files
+load_from_server <- FALSE
+
+```
+
+This is a preliminary evaluation of forecasts made for the [German Forecast Hub](https://github.com/KITmetricslab/covid19-forecast-hub-de). These evaluations are preliminary - this means I cannot currently rule out any mistakes and the plots and analyses are subject to change. The evaluations are not authorised by the German Forecast Hub team. 
+
+Feel free to reproduce this analysis. To that end, you can clone this repository and the Forecast Hub repository, specify the directory of the submissions files in the R-Markdown script and run the script. 
+
+If you have questions or want to give feedback, please create an issue in this repository. 
+
+```{r load-data}
+
+# load predictions (i.e. load submission files)
+pred <- load_submission_files(num_last = 2,
+                              models = models,
+                              dir = root_dir) %>%
+  dplyr::filter(target_end_date >= "2020-10-17") %>%
+  dplyr::select(-location)
+
+
+if (load_from_server) {
+  get_data(load_from_server = TRUE, 
+           country = "Germany_Poland")
+}
+
+obs_death <- get_data(cases = FALSE)
+obs_case <- get_data()
+
+
+case_data <- dplyr::inner_join(pred %>%
+                              dplyr::rename(prediction = value) %>%
+                              dplyr::filter(grepl("inc", target),
+                                            grepl("case", target),
+                                            type == "quantile"),
+                            obs_case %>%
+                              dplyr::rename(true_value = value))
+
+death_data <- dplyr::inner_join(pred %>%
+                              dplyr::rename(prediction = value) %>%
+                              dplyr::filter(grepl("inc", target),
+                                            grepl("death", target),
+                                            type == "quantile"),
+                            obs_death %>%
+                              dplyr::rename(true_value = value))
+
+
+
+```
+
+
+## Forecast Visualisation
+
+Visualisation of one week ahead forecasts
+
+``` {r fig.show = "hold", out.width = "100%"}
+scoringutils::plot_predictions(case_data %>%
+                                 dplyr::filter(horizon == 1, 
+                                               location_name == "Germany"),
+                               x = "target_end_date", 
+                               facet_formula = ~ model, 
+                               scales = "fixed") + 
+  ggplot2::ggtitle("One week ahead predictions for incident cases in Germany")
+
+
+scoringutils::plot_predictions(case_data %>%
+                                 dplyr::filter(horizon == 1, 
+                                               location_name == "Poland"),
+                               x = "target_end_date", 
+                               facet_formula = ~ model, 
+                               scales = "fixed") + 
+  ggplot2::ggtitle("One week ahead predictions for incident cases in Poland")
+
+
+scoringutils::plot_predictions(death_data %>%
+                                 dplyr::filter(horizon == 1, 
+                                               location_name == "Germany"),
+                               x = "target_end_date", 
+                               facet_formula = ~ model, 
+                               scales = "fixed") + 
+  ggplot2::ggtitle("One week ahead predictions for incident deaths in Germany")
+
+
+scoringutils::plot_predictions(death_data %>%
+                                 dplyr::filter(horizon == 1, 
+                                               location_name == "Poland"),
+                               x = "target_end_date", 
+                               facet_formula = ~ model, 
+                               scales = "fixed") + 
+  ggplot2::ggtitle("One week ahead predictions for incident deaths in Poland")
+
+```
+
+
+
+## Score Overview
+
+Overview of all the models and metrics
+
+``` {r fig.show = "hold", out.width = "100%"}
+scores_cases <- scoringutils::eval_forecasts(case_data,
+                                             summarise_by = "model")
+
+scores_deaths <- scoringutils::eval_forecasts(death_data,
+                                              summarise_by = "model")
+
+
+scoringutils::score_table(scores_cases) + 
+  ggplot2::ggtitle("Incident Cases")
+
+scoringutils::score_table(scores_deaths) +
+  ggplot2::ggtitle("Incident Deaths")
+
+
+```
+
+## Interval Score Components
+
+Weighted interval score broken down into its components "overprediction penalty", 
+"underprediction penalty" and "sharpness"
+
+``` {r out.width = "100%"}
+scoringutils::wis_components(scores_cases, x = "model")  +
+  ggplot2::labs(title = "Incident Cases")
+
+scoringutils::wis_components(scores_deaths, x = "model")  +
+  ggplot2::labs(title = "Incident Cases")
+```
+
+
+## Calibration
+
+### Interval Coverage
+Plot of the percentage of true values captured by each prediction interval
+
+``` {r}
+scores_cases <- scoringutils::eval_forecasts(case_data,
+                                             summarise_by = c("model", "range"))
+
+scores_deaths <- scoringutils::eval_forecasts(death_data,
+                                              summarise_by = c("model", "range"))
+
+
+scoringutils::interval_coverage(scores_cases, 
+                                facet_formula = ~ model) + 
+  ggplot2::ggtitle("Incident Cases")
+
+scoringutils::interval_coverage(scores_deaths, 
+                                facet_formula = ~ model) +
+  ggplot2::ggtitle("Incident Deaths")
+
+
+```
+
+
+
+### Quantile Coverage
+Plot of the percentage of true values below each predictive quantile level
+
+``` {r}
+
+scoringutils::quantile_coverage(case_data, 
+                                facet_formula = ~ model) +
+  ggplot2::ggtitle("Incident Cases")
+
+scoringutils::quantile_coverage(death_data, 
+                                facet_formula = ~ model) +
+  ggplot2::ggtitle("Incident Deaths")
+  
+```
+
+
+## Bias 
+
+``` {r}
+
+scores_cases <- scoringutils::eval_forecasts(case_data,
+                                             summarise_by = c("model", 
+                                                              "location_name"))
+
+scores_deaths <- scoringutils::eval_forecasts(death_data,
+                                              summarise_by = c("model", 
+                                                              "location_name"))
+
+
+scoringutils::score_heatmap(scores_cases, metric = "bias", 
+                            x = "location_name") +
+  ggplot2::ggtitle("Incident Cases")
+
+
+scoringutils::score_heatmap(scores_deaths, metric = "bias", 
+                            x = "location_name") +
+  ggplot2::ggtitle("Incident Deaths")
+
+```
+
+
+
+
