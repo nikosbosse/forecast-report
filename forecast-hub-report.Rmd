@@ -145,7 +145,7 @@ scoringutils::wis_components(scores_cases, x = "model")  +
   ggplot2::labs(title = "Incident Cases")
 
 scoringutils::wis_components(scores_deaths, x = "model")  +
-  ggplot2::labs(title = "Incident Cases")
+  ggplot2::labs(title = "Incident Deaths")
 ```
 
 
