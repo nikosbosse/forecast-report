@@ -1,8 +1,8 @@
 ---
 title: "Forecast Evaluation for the German Forecast Hub"
 output: 
-  html_document: default
   github_document: default
+  html_document: default
 ---
 
   
