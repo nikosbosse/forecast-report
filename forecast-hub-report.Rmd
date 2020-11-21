@@ -1,18 +1,24 @@
 ---
 title: "Forecast Evaluation for the German Forecast Hub"
 output: 
-  github_document
+  html_document
+# toc: true
+# toc_float: true
+# toc_collapsed: true
+# toc_depth: 3
 ---
 
   
 ```{r setup, include=FALSE}
-# knitr options
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
-                      out.width = "100%")
-
 # packages
 library(scoringutils)
 library(magrittr)
+library(knitr)
+
+# knitr options
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
+                      warning = FALSE, 
+                      out.width = "100%")
 
 # source other functions
 source("load-data.R")
@@ -21,8 +27,93 @@ source("load-data.R")
 models <- "all" # models to evaluate
 root_dir <- "../data-processed" # root directory for the submission files
 load_from_server <- FALSE
+locations <- c("Germany", "Poland")
+forecast_dates <- c("2020-10-12", "2020-10-19", "2020-10-26", "2020-11-02", 
+                    "2020-11-09")
+
+
+
 
 ```
+
+``` {r helper-functions}
+# filter data
+filter_helper <- function(dataframe, forecast_date = NULL, location = NULL) {
+  if (!is.null(forecast_date)) {
+    forecast_date <- forecast_date # why do I need this?
+    dataframe <- dplyr::filter(dataframe, 
+                               forecast_date == {{forecast_date}})
+  }
+  if (!is.null(location)) {
+    location <- location # and this?
+    dataframe <- dplyr::filter(dataframe, 
+                               location_name == {{location}})
+  }
+  return(dataframe)
+}
+
+# # make visualisation with correct structure
+# report_sub_part <- function(plot_function, 
+#                             case_data, 
+#                             death_data,
+#                             forecast_dates = NULL, 
+#                             locations = NULL) {
+#   if (is.null(locations)) {
+#   locations <- case_data$location_name %>%
+#     unique()
+# }
+# 
+# for (location in locations) {
+#   
+#   cat("\n\n##", location, "{.tabset}\n")
+#   
+#   if (is.null(forecast_dates)) {
+#     forecast_dates <- case_data %>%
+#       dplyr::filter(location_name == {{ location }}) %>%
+#       dplyr::pull(forecast_date) %>%
+#       unique()
+#   }
+#   
+#   for (forecast_date in forecast_dates) {
+#     cases <- filter_helper(case_data_w_pred, forecast_date, location)
+#     deaths <- filter_helper(death_data_w_pred, forecast_date, location)
+#     
+#     if (nrow(cases) == 0 & nrow(deaths) == 0) {
+#       next()
+#     } 
+#     
+#     if (nrow(cases) != 0) {
+#       cat(paste0("### ", forecast_date), "\n")
+#       
+#       p1 <- plot_predictions_helper(data = cases, additional_data = obs_case, 
+#                                     location = location, type = "cases")
+#       print(p1)
+#       cat("\n\n\n")
+#     }
+# 
+#     if (nrow(deaths) != 0) {
+#       
+#       if (nrow(cases) == 0) {
+#         cat(paste0("### ", forecast_date), "\n")
+#       }
+#       
+#       p2 <-plot_predictions_helper(data = deaths, additional_data = obs_death, 
+#                                     location = location, type = "deaths") 
+#       print(p2)
+#     }
+#     
+#     cat("\n\n")
+#     
+#   }
+# }
+#   
+#   
+# }
+
+
+```
+
+
 
 This is a preliminary evaluation of forecasts made for the [German Forecast Hub](https://github.com/KITmetricslab/covid19-forecast-hub-de). These evaluations are preliminary - this means I cannot currently rule out any mistakes and the plots and analyses are subject to change. The evaluations are not authorised by the German Forecast Hub team. 
 
@@ -30,10 +121,10 @@ Feel free to reproduce this analysis. To that end, you can clone this repository
 
 If you have questions or want to give feedback, please create an issue in this repository. 
 
-```{r load-data}
+```{r load-data, results = 'asis'}
 
 # load predictions (i.e. load submission files)
-pred <- load_submission_files(num_last = 2,
+pred <- load_submission_files(dates = forecast_dates,
                               models = models,
                               dir = root_dir) %>%
   dplyr::filter(target_end_date >= "2020-10-17") %>%
@@ -49,169 +140,513 @@ obs_death <- get_data(cases = FALSE)
 obs_case <- get_data()
 
 
-case_data <- dplyr::inner_join(pred %>%
-                              dplyr::rename(prediction = value) %>%
-                              dplyr::filter(grepl("inc", target),
-                                            grepl("case", target),
-                                            type == "quantile"),
-                            obs_case %>%
-                              dplyr::rename(true_value = value))
+case_data_w_pred <- dplyr::left_join(pred %>%
+                                       dplyr::rename(prediction = value) %>%
+                                       dplyr::filter(grepl("inc", target),
+                                                     grepl("case", target),
+                                                     type == "quantile"),
+                                     obs_case %>%
+                                       dplyr::rename(true_value = value))
 
-death_data <- dplyr::inner_join(pred %>%
-                              dplyr::rename(prediction = value) %>%
-                              dplyr::filter(grepl("inc", target),
-                                            grepl("death", target),
-                                            type == "quantile"),
-                            obs_death %>%
-                              dplyr::rename(true_value = value))
+case_data <- case_data_w_pred %>%
+  dplyr::filter(!is.na(true_value))
 
+death_data_w_pred <- dplyr::left_join(pred %>%
+                                        dplyr::rename(prediction = value) %>%
+                                        dplyr::filter(grepl("inc", target),
+                                                      grepl("death", target),
+                                                      type == "quantile"),
+                                      obs_death %>%
+                                        dplyr::rename(true_value = value))
 
-
-```
-
-
-## Forecast Visualisation
-
-Visualisation of one week ahead forecasts
-
-``` {r showdata}
-scoringutils::plot_predictions(case_data %>%
-                                 dplyr::filter(horizon == 1, 
-                                               location_name == "Germany"),
-                               x = "target_end_date", 
-                               facet_formula = ~ model, 
-                               scales = "fixed") + 
-  ggplot2::ggtitle("One week ahead predictions for incident cases in Germany")
-
-
-scoringutils::plot_predictions(case_data %>%
-                                 dplyr::filter(horizon == 1, 
-                                               location_name == "Poland"),
-                               x = "target_end_date", 
-                               facet_formula = ~ model, 
-                               scales = "fixed") + 
-  ggplot2::ggtitle("One week ahead predictions for incident cases in Poland")
-
-
-scoringutils::plot_predictions(death_data %>%
-                                 dplyr::filter(horizon == 1, 
-                                               location_name == "Germany"),
-                               x = "target_end_date", 
-                               facet_formula = ~ model, 
-                               scales = "fixed") + 
-  ggplot2::ggtitle("One week ahead predictions for incident deaths in Germany")
-
-
-scoringutils::plot_predictions(death_data %>%
-                                 dplyr::filter(horizon == 1, 
-                                               location_name == "Poland"),
-                               x = "target_end_date", 
-                               facet_formula = ~ model, 
-                               scales = "fixed") + 
-  ggplot2::ggtitle("One week ahead predictions for incident deaths in Poland")
+death_data <- death_data_w_pred %>%
+  dplyr::filter(!is.na(true_value))
 
 ```
 
 
 
-## Score Overview
+
+
+
+# Forecast Visualisation
+
+``` {r showdata, results = 'asis', warning = FALSE, fig.width = 10, eval = TRUE}
+plot_predictions_helper <- function(data, additional_data, 
+                                    n_weeks = 12, location, 
+                                    type) {
+  
+  location <- location
+  
+  plot <- scoringutils::plot_predictions(data,
+                                         x = "target_end_date", 
+                                         facet_formula = ~ model, 
+                                         add_truth_data = additional_data %>%
+                                           dplyr::rename(true_value = value) %>%
+                                           dplyr::filter(as.Date(target_end_date) >= (Sys.Date() - n_weeks * 7),
+                                                         location_name == {{ location }}),
+                                         scales = "free") +
+    ggplot2::ggtitle(paste("Predictions for incident", type,  "in", location))
+  
+  return(plot)
+}
+ 
+
+if (is.null(locations)) {
+  locations <- case_data$location_name %>%
+    unique()
+}
+
+for (location in locations) {
+  
+  cat("\n\n##", location, "{.tabset}\n")
+  
+  if (is.null(forecast_dates)) {
+    forecast_dates <- case_data %>%
+      dplyr::filter(location_name == {{ location }}) %>%
+      dplyr::pull(forecast_date) %>%
+      unique()
+  }
+  
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data_w_pred, forecast_date, location)
+    deaths <- filter_helper(death_data_w_pred, forecast_date, location)
+    
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      
+      p1 <- plot_predictions_helper(data = cases, additional_data = obs_case, 
+                                    location = location, type = "cases")
+      print(p1)
+      cat("\n\n\n")
+    }
+
+    if (nrow(deaths) != 0) {
+      
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      
+      p2 <-plot_predictions_helper(data = deaths, additional_data = obs_death, 
+                                    location = location, type = "deaths") 
+      print(p2)
+    }
+    
+    cat("\n\n")
+    
+  }
+}
+
+
+```
+
+# Score Overview
 
 Overview of all the models and metrics
 
-``` {r scoretable}
-scores_cases <- scoringutils::eval_forecasts(case_data,
-                                             summarise_by = "model")
+``` {r scoretable, fig.width = 12, results = 'asis', eval = TRUE}
+# overall summary
+plot_score_table_helper <- function(data, type) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = "model")
+  
+  plot <- scoringutils::score_table(scores) + 
+        ggplot2::ggtitle(paste("Incident", type))
+  return(plot)
+}
 
-scores_deaths <- scoringutils::eval_forecasts(death_data,
-                                              summarise_by = "model")
+cat("\n\n## Overall")
+
+pp <- plot_score_table_helper(dplyr::bind_rows(case_data, death_data), 
+                              type = "cases and deaths together")
+print(pp)
+
+cat("\n\n## Overall cases and deaths separate")
+
+p1 <- plot_score_table_helper(case_data, type = "cases")
+print(p1)
+
+cat("\n")
+
+p2 <- plot_score_table_helper(death_data, type = "deaths")
+print(p2)
+
+cat("\n\n")
 
 
-scoringutils::score_table(scores_cases) + 
-  ggplot2::ggtitle("Incident Cases")
-
-scoringutils::score_table(scores_deaths) +
-  ggplot2::ggtitle("Incident Deaths")
-
+# by location
+for (location in locations) {
+  
+  cat("\n\n##", location, "{.tabset}\n")
+  
+  cat(paste0("### Overall \n"))
+  cases <- filter_helper(case_data, location = location)
+  p1 <- plot_score_table_helper(data = cases, type = "cases")
+  print(p1)
+  
+  cat("\n")
+  
+  deaths <- filter_helper(death_data, location = location)
+  p2 <- plot_score_table_helper(data = deaths, type = "deaths")
+  print(p2)
+  
+  cat("\n\n")
+  
+  
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data, location = location, 
+                           forecast_date = forecast_date)
+    deaths <- filter_helper(death_data, location = location, 
+                            forecast_date = forecast_date)
+    
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      p1 <- plot_score_table_helper(data = cases, type = "cases")
+      print(p1)
+    }
+    
+    cat("\n\n\n")
+    
+    if (nrow(deaths) != 0) {
+      
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      p2 <- plot_score_table_helper(data = deaths, type = "deaths")
+      print(p2)
+    }
+    
+    cat("\n\n")
+    
+  }
+}
 
 ```
+
 
 ## Interval Score Components
 
 Weighted interval score broken down into its components "overprediction penalty", 
 "underprediction penalty" and "sharpness"
 
-``` {r out.width = "100%"}
-scoringutils::wis_components(scores_cases, x = "model")  +
-  ggplot2::labs(title = "Incident Cases")
+``` {r wis-components, fig.width = 12, results = 'asis', eval = TRUE}
+# overall summary
+plot_wis_components_helper <- function(data, type) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = "model")
+  
+  plot <- scoringutils::wis_components(scores) + 
+        ggplot2::ggtitle(paste("WIS componentents - Incident", type))
+  return(plot)
+}
 
-scoringutils::wis_components(scores_deaths, x = "model")  +
-  ggplot2::labs(title = "Incident Deaths")
+plot_function <- plot_wis_components_helper
+
+out <- knitr::knit_child("templates/overall-location-forecast_date.Rmd",
+                         envir = environment()) 
+
+cat(paste(out, collapse = '\n'))
+
+# 
+# cat("\n\n## Overall")
+# 
+# p1 <- plot_wis_components_helper(case_data, type = "cases")
+# print(p1)
+# 
+# cat("\n")
+# 
+# p2 <- plot_wis_components_helper(death_data, type = "deaths")
+# print(p2)
+# 
+# cat("\n\n")
+# 
+# 
+# # by location
+# for (location in locations) {
+#   
+#   cat("\n\n##", location, "{.tabset}\n")
+#   
+#   cat(paste0("### Overall \n"))
+#   cases <- filter_helper(case_data, location = location)
+#   p1 <- plot_wis_components_helper(data = cases, type = "cases")
+#   print(p1)
+#   
+#   cat("\n")
+#   
+#   deaths <- filter_helper(death_data, location = location)
+#   p2 <- plot_wis_components_helper(data = deaths, type = "deaths")
+#   print(p2)
+#   
+#   cat("\n\n")
+#   
+#   
+#   for (forecast_date in forecast_dates) {
+#     cases <- filter_helper(case_data, location = location, 
+#                            forecast_date = forecast_date)
+#     deaths <- filter_helper(death_data, location = location, 
+#                             forecast_date = forecast_date)
+#     
+#     if (nrow(cases) == 0 & nrow(deaths) == 0) {
+#       next()
+#     } 
+#     
+#     if (nrow(cases) != 0) {
+#       cat(paste0("### ", forecast_date), "\n")
+#       p1 <- plot_wis_components_helper(data = cases, type = "cases")
+#       print(p1)
+#     }
+#     
+#     cat("\n\n\n")
+#     
+#     if (nrow(deaths) != 0) {
+#       
+#       if (nrow(cases) == 0) {
+#         cat(paste0("### ", forecast_date), "\n")
+#       }
+#       p2 <- plot_wis_components_helper(data = deaths, type = "deaths")
+#       print(p2)
+#     }
+#     
+#     cat("\n\n")
+#     
+#   }
+# }
+
 ```
 
 
-## Calibration
+# Calibration
 
-### Interval Coverage
+## Interval Coverage
 Plot of the percentage of true values captured by each prediction interval
 
-``` {r}
-scores_cases <- scoringutils::eval_forecasts(case_data,
-                                             summarise_by = c("model", "range"))
-
-scores_deaths <- scoringutils::eval_forecasts(death_data,
-                                              summarise_by = c("model", "range"))
+``` {r fig.width = 12, results = 'asis', eval = TRUE}
 
 
-scoringutils::interval_coverage(scores_cases, 
-                                facet_formula = ~ model) + 
-  ggplot2::ggtitle("Incident Cases")
 
-scoringutils::interval_coverage(scores_deaths, 
-                                facet_formula = ~ model) +
-  ggplot2::ggtitle("Incident Deaths")
 
+# overall summary
+plot_interval_coverage_helper <- function(data, type) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = c("model", "range"))
+  
+  plot <- scoringutils::interval_coverage(scores) + 
+        ggplot2::ggtitle(paste("Interval coverage - Incident", type))
+  return(plot)
+}
+
+cat("\n\n## Overall")
+
+p1 <- plot_interval_coverage_helper(case_data, type = "cases")
+print(p1)
+
+cat("\n")
+
+p2 <- plot_interval_coverage_helper(death_data, type = "deaths")
+print(p2)
+
+cat("\n\n")
+
+
+# by location
+for (location in locations) {
+  
+  cat("\n\n##", location, "{.tabset}\n")
+  
+  cat(paste0("### Overall \n"))
+  cases <- filter_helper(case_data, location = location)
+  p1 <- plot_interval_coverage_helper(data = cases, type = "cases")
+  print(p1)
+  
+  cat("\n")
+  
+  deaths <- filter_helper(death_data, location = location)
+  p2 <- plot_interval_coverage_helper(data = deaths, type = "deaths")
+  print(p2)
+  
+  cat("\n\n")
+  
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data, location = location, 
+                           forecast_date = forecast_date)
+    deaths <- filter_helper(death_data, location = location, 
+                            forecast_date = forecast_date)
+    
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      p1 <- plot_interval_coverage_helper(data = cases, type = "cases")
+      print(p1)
+    }
+    
+    cat("\n\n\n")
+    
+    if (nrow(deaths) != 0) {
+      
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      p2 <- plot_interval_coverage_helper(data = deaths, type = "deaths")
+      print(p2)
+    }
+    
+    cat("\n\n")
+    
+  }
+}
 
 ```
 
 
 
-### Quantile Coverage
+## Quantile Coverage
 Plot of the percentage of true values below each predictive quantile level
 
-``` {r}
+``` {r fig.width = 12, results = 'asis', eval = TRUE}
 
-scoringutils::quantile_coverage(case_data, 
-                                facet_formula = ~ model) +
-  ggplot2::ggtitle("Incident Cases")
+# overall summary
+plot_quantile_coverage_helper <- function(data, type) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = c("model", "quantile"))
+  
+  plot <- scoringutils::quantile_coverage(scores) + 
+        ggplot2::ggtitle(paste("Interval coverage - Incident", type))
+  return(plot)
+}
 
-scoringutils::quantile_coverage(death_data, 
-                                facet_formula = ~ model) +
-  ggplot2::ggtitle("Incident Deaths")
+cat("\n\n## Overall")
+
+p1 <- plot_quantile_coverage_helper(case_data, type = "cases")
+print(p1)
+
+cat("\n")
+
+p2 <- plot_quantile_coverage_helper(death_data, type = "deaths")
+print(p2)
+
+cat("\n\n")
+
+
+# by location
+for (location in locations) {
+  
+  cat("\n\n##", location, "{.tabset}\n")
+  
+  cat(paste0("### Overall \n"))
+  cases <- filter_helper(case_data, location = location)
+  p1 <- plot_quantile_coverage_helper(data = cases, type = "cases")
+  print(p1)
+  
+  cat("\n")
+  
+  deaths <- filter_helper(death_data, location = location)
+  p2 <- plot_quantile_coverage_helper(data = deaths, type = "deaths")
+  print(p2)
+  
+  cat("\n\n")
+  
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data, location = location, 
+                           forecast_date = forecast_date)
+    deaths <- filter_helper(death_data, location = location, 
+                            forecast_date = forecast_date)
+    
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      p1 <- plot_quantile_coverage_helper(data = cases, type = "cases")
+      print(p1)
+    }
+    
+    cat("\n\n\n")
+    
+    if (nrow(deaths) != 0) {
+      
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      p2 <- plot_quantile_coverage_helper(data = deaths, type = "deaths")
+      print(p2)
+    }
+    
+    cat("\n\n")
+    
+  }
+}
   
 ```
 
 
-## Bias 
+# Bias {.tabset}
 
-``` {r}
+``` {r bias, fig.width = 12, results = 'asis', eval = TRUE}
 
-scores_cases <- scoringutils::eval_forecasts(case_data,
-                                             summarise_by = c("model", 
-                                                              "location_name"))
-
-scores_deaths <- scoringutils::eval_forecasts(death_data,
-                                              summarise_by = c("model", 
-                                                              "location_name"))
-
-
-scoringutils::score_heatmap(scores_cases, metric = "bias", 
-                            x = "location_name") +
-  ggplot2::ggtitle("Incident Cases")
+plot_bias_helper <- function(data, type) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = c("model", "location_name"))
+  
+  plot <- scoringutils::score_heatmap(scores, metric = "bias", x = "location_name") + 
+    ggplot2::labs(x = "Location") + 
+    ggplot2::ggtitle(paste("Bias - Incident", type))
+  return(plot)
+}
 
 
-scoringutils::score_heatmap(scores_deaths, metric = "bias", 
-                            x = "location_name") +
-  ggplot2::ggtitle("Incident Deaths")
+cat(paste0("## Overall \n"))
+cases <- case_data
+p1 <- plot_bias_helper(data = cases, type = "cases")
+print(p1)
+
+cat("\n")
+
+deaths <- death_data
+p2 <- plot_bias_helper(data = deaths, type = "deaths")
+print(p2)
+
+cat("\n\n")
+
+for (forecast_date in forecast_dates) {
+  cases <- filter_helper(case_data, forecast_date = forecast_date)
+  deaths <- filter_helper(death_data, forecast_date = forecast_date)
+  
+  if (nrow(cases) == 0 & nrow(deaths) == 0) {
+    next()
+  } 
+  
+  if (nrow(cases) != 0) {
+    cat(paste0("## ", forecast_date), "\n")
+    p1 <- plot_bias_helper(data = cases, type = "cases")
+    print(p1)
+  }
+  
+  cat("\n\n\n")
+  
+  if (nrow(deaths) != 0) {
+    
+    if (nrow(cases) == 0) {
+      cat(paste0("## ", forecast_date), "\n")
+    }
+    p2 <- plot_bias_helper(data = deaths, type = "deaths")
+    print(p2)
+  }
+  
+  cat("\n\n")
+  
+}
 
 ```
 

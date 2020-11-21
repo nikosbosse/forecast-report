@@ -61,11 +61,16 @@ load_submission_files <- function(dir,
       }
       n <- length(files)
       files <- files[(n - num_last):n]
+      
       # dates are specifically given
     } else {
       dates_available <- as.Date(substr(files, 1, 10))
       index <- 1:length(dates_available)
       index <- index[as.character(dates_available) %in% as.character(dates)]
+      
+      if (length(index) == 0) {
+        return(NULL)
+      }
       
       # only makes sense if only a single file was given
       if (!is.null(num_last)) {
@@ -120,8 +125,6 @@ load_submission_files <- function(dir,
   
   return(forecasts)
 }
-
-
 
 
 

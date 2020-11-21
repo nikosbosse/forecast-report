@@ -1,0 +1,15 @@
+---
+title: "Forecast Evaluation for the German Forecast Hub"
+output: 
+  github_document
+toc: true
+# toc_float: true
+# toc_collapsed: true
+# toc_depth: 3
+---
+
+```{r, echo=FALSE}
+htmltools::includeHTML("forecast-hub-report.html")
+
+```
+
