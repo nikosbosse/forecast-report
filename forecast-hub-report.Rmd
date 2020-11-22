@@ -36,8 +36,8 @@ source("load-data.R")
 # evaluation options
 models <- "all" # models to evaluate
  # root directory for the submission files
-root_dir <- "../covid19-forecast-hub-de/ data-processed"
-load_from_server <- FALSE
+root_dir <- "../covid19-forecast-hub-de/data-processed"
+load_from_server <- TRUE
 locations <- c("Germany", "Poland")
 forecast_dates <- c("2020-10-12", "2020-10-19", "2020-10-26", "2020-11-02", 
                     "2020-11-09", "2020-11-16")
@@ -45,7 +45,8 @@ forecast_dates <- c("2020-10-12", "2020-10-19", "2020-10-26", "2020-11-02",
 
 ``` {r helper-functions}
 # filter data
-filter_helper <- function(dataframe, forecast_date = NULL, location = NULL) {
+filter_helper <- function(dataframe, forecast_date = NULL, location = NULL,
+                          horizon = NULL) {
   if (!is.null(forecast_date)) {
     forecast_date <- forecast_date # why do I need this?
     dataframe <- dplyr::filter(dataframe, 
@@ -55,6 +56,11 @@ filter_helper <- function(dataframe, forecast_date = NULL, location = NULL) {
     location <- location # and this?
     dataframe <- dplyr::filter(dataframe, 
                                location_name == {{location}})
+  }
+  if (!is.null(horizon)) {
+    horizon <- horizon 
+    dataframe <- dplyr::filter(dataframe, 
+                               horizon == {{horizon}})
   }
   return(dataframe)
 }
@@ -76,15 +82,10 @@ pred <- load_submission_files(dates = forecast_dates,
   dplyr::filter(target_end_date >= "2020-10-17") %>%
   dplyr::select(-location)
 
-
-if (load_from_server) {
-  get_data(load_from_server = TRUE, 
-           country = "Germany_Poland")
-}
-
+get_data(load_from_server = load_from_server,
+         country = "Germany_Poland")
 obs_death <- get_data(cases = FALSE)
 obs_case <- get_data()
-
 
 case_data_w_pred <- dplyr::left_join(pred %>%
                                        dplyr::rename(prediction = value) %>%
@@ -148,7 +149,7 @@ for (location in locations) {
   
   if (is.null(forecast_dates)) {
     forecast_dates <- case_data %>%
-      dplyr::filter(location_name == {{ location }}) %>%
+      dplyr::filter(location_name == {{location}}) %>%
       dplyr::pull(forecast_date) %>%
       unique()
   }
@@ -193,7 +194,7 @@ Overview of all the models and metrics
 
 ``` {r scoretable, fig.width = 12, results = 'asis', eval = TRUE}
 # overall summary
-plot_score_table_helper <- function(data, type) {
+plot_score_table_helper <- function(data, type, filter) {
   scores <- scoringutils::eval_forecasts(data,
                                          summarise_by = "model")
   
@@ -273,13 +274,65 @@ for (location in locations) {
 }
 ```
 
+# Overiew of Scores by Horizon
+
+Overview of all models and metrics stratified by forecast horizons
+
+``` {r scoretablehorizon, fig.width = 12, results = 'asis', eval = TRUE}
+# overall summary
+plot_score_table_helper <- function(data, type, filter) {
+  scores <- scoringutils::eval_forecasts(data,
+                                         summarise_by = "model")
+  
+  plot <- scoringutils::score_table(scores) + 
+        ggplot2::ggtitle(paste("Incident", type))
+  return(plot)
+}
+horizons = 1:4
+# by location
+for (horizon in horizons) {
+  cat("\n\n##", horizon, "{.tabset}\n")
+  cat(paste0("### Overall \n"))
+  cases <- filter_helper(case_data, horizon = horizon)
+  p1 <- plot_score_table_helper(data = cases, type = "cases")
+  print(p1)
+  cat("\n")
+  deaths <- filter_helper(death_data, horizon = horizon)
+  p2 <- plot_score_table_helper(data = deaths, type = "deaths")
+  print(p2)
+  cat("\n\n")
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data, horizon = horizon,
+                           forecast_date = forecast_date)
+    deaths <- filter_helper(death_data, location = location, 
+                            forecast_date = forecast_date)
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      p1 <- plot_score_table_helper(data = cases, type = "cases")
+      print(p1)
+    }
+    cat("\n\n\n")
+    if (nrow(deaths) != 0) {
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      p2 <- plot_score_table_helper(data = deaths, type = "deaths")
+      print(p2)
+    }
+    cat("\n\n")
+  }
+}
+```
 
 ## Interval Score Components
 
 Weighted interval score broken down into its components "overprediction penalty", 
 "underprediction penalty" and "sharpness"
 
-``` {r wis-components, fig.width = 12, results = 'asis', eval = TRUE}
+``` {r wis-components, fig.width = 12, results = 'asis', eval = TRUE, message = FALSE}
 # overall summary
 plot_wis_components_helper <- function(data, type) {
   scores <- scoringutils::eval_forecasts(data,
