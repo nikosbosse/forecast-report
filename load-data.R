@@ -12,6 +12,9 @@
 #' @param models either "all" or a vector with model names
 #' @param drop_latest_forecast drops most recent forecast. Default is FALSE
 #' @return A data.frame with all loaded forecasts
+#' @importFrom here here
+#' @importFrom purrr map_dfr
+#' @importFrom data.table rbindlist
 #' @export
 #'
 
@@ -26,8 +29,6 @@ load_submission_files <- function(dir,
   } else {
     model_names <- models
   }
-  
-  
   
   load_model_files <- function(model_name, location, case) {
     
@@ -173,6 +174,9 @@ dates_to_epiweek <- function(df){
 #' @param country = "Germany_Poland"
 #' @param weekly = TRUE
 #' @return A data.frame with all loaded forecasts
+#' @importFrom dplyr group_by count filter mutate left_join summarise
+#' @importFrom readr read_csv
+#' @importFrom data.table fread
 #' @export
 #'
 
