@@ -194,7 +194,7 @@ Overview of all the models and metrics
 
 ``` {r scoretable, fig.width = 12, results = 'asis', eval = TRUE}
 # overall summary
-plot_score_table_helper <- function(data, type, filter) {
+plot_score_table_helper <- function(data, type) {
   scores <- scoringutils::eval_forecasts(data,
                                          summarise_by = "model")
   
