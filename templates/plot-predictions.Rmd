@@ -1,0 +1,53 @@
+
+``` {r results = 'asis'}
+# by location
+for (location in locations) {
+  
+  cat("\n\n##", location, "{.tabset}\n")
+  
+  cat(paste0("### Overall \n"))
+  cases <- filter_helper(case_data, location = location)
+  p1 <- plot_function(data = cases, 
+                      additional_data = obs_case, type = "cases")
+  print(p1)
+  
+  cat("\n")
+  
+  deaths <- filter_helper(death_data, location = location)
+  p2 <- plot_function(data = deaths, additional_data = obs_death, type = "deaths")
+  print(p2)
+  
+  cat("\n\n")
+  
+  
+  for (forecast_date in forecast_dates) {
+    cases <- filter_helper(case_data, location = location, 
+                           forecast_date = forecast_date)
+    deaths <- filter_helper(death_data, location = location, 
+                            forecast_date = forecast_date)
+    
+    if (nrow(cases) == 0 & nrow(deaths) == 0) {
+      next()
+    } 
+    
+    if (nrow(cases) != 0) {
+      cat(paste0("### ", forecast_date), "\n")
+      p1 <- plot_function(data = cases, additional_data = obs_case, type = "cases")
+      print(p1)
+    }
+    
+    cat("\n\n\n")
+    
+    if (nrow(deaths) != 0) {
+      
+      if (nrow(cases) == 0) {
+        cat(paste0("### ", forecast_date), "\n")
+      }
+      p2 <- plot_function(data = deaths, additional_data = obs_death, type = "deaths")
+      print(p2)
+    }
+    
+    cat("\n\n")
+    
+  }
+}

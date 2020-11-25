@@ -1,0 +1,40 @@
+
+
+`r paste("\n\n## Overall \n")`
+
+
+
+``` {r}
+plot_score_table_helper(data)
+```
+
+`r paste("\n\n")`
+
+`r paste("\n\n## Overall separate \n")`
+
+
+``` {r}
+for (target_type in target_types) {
+  plot_score_table_helper(data, target_type = target_type)
+  paste("\n\n")
+}
+
+```
+
+``` {r}
+
+# by location
+for (location in locations) {
+  paste("\n\n##", location, "{.tabset}\n")
+  for (forecast_date in forecast_dates) {
+    paste(paste0("### ", forecast_date), "\n")
+    for (target_type in target_types) {
+      p1 <- plot_score_table_helper(data, target_type = target_type, 
+                                    location = location, 
+                                    forecast_date = forecast_date)
+      p1
+      paste("\n\n")
+    }
+  }
+}
+```
